@@ -244,88 +244,88 @@ export async function getChartDataRequest({
   );
 }
 
-export function runAnnotationQuery({
+export async function runAnnotationQuery({
   annotation,
   timeout = 60,
   formData = null,
   key,
   isDashboardRequest = false,
   force = false,
+  dispatch,
+  getState,
 }) {
-  return function (dispatch, getState) {
-    const sliceKey = key || Object.keys(getState().charts)[0];
-    // make a copy of formData, not modifying original formData
-    const fd = {
-      ...(formData || getState().charts[sliceKey].latestQueryFormData),
-    };
-
-    if (!requiresQuery(annotation.sourceType)) {
-      return Promise.resolve();
-    }
-
-    const granularity = fd.time_grain_sqla || fd.granularity;
-    fd.time_grain_sqla = granularity;
-    fd.granularity = granularity;
-    const overridesKeys = Object.keys(annotation.overrides);
-    if (overridesKeys.includes('since') || overridesKeys.includes('until')) {
-      annotation.overrides = {
-        ...annotation.overrides,
-        time_range: null,
-      };
-    }
-    const sliceFormData = Object.keys(annotation.overrides).reduce(
-      (d, k) => ({
-        ...d,
-        [k]: annotation.overrides[k] || fd[k],
-      }),
-      {},
-    );
-
-    if (!isDashboardRequest && fd) {
-      const hasExtraFilters = fd.extra_filters && fd.extra_filters.length > 0;
-      sliceFormData.extra_filters = hasExtraFilters
-        ? fd.extra_filters
-        : undefined;
-    }
-
-    const isNative = annotation.sourceType === ANNOTATION_SOURCE_TYPES.NATIVE;
-    const url = getAnnotationJsonUrl(
-      annotation.value,
-      sliceFormData,
-      isNative,
-      force,
-    );
-    const controller = new AbortController();
-    const { signal } = controller;
-
-    dispatch(annotationQueryStarted(annotation, controller, sliceKey));
-
-    return SupersetClient.get({
-      url,
-      signal,
-      timeout: timeout * 1000,
-    })
-      .then(({ json }) =>
-        dispatch(annotationQuerySuccess(annotation, json, sliceKey)),
-      )
-      .catch(response =>
-        getClientErrorObject(response).then(err => {
-          if (err.statusText === 'timeout') {
-            dispatch(
-              annotationQueryFailed(
-                annotation,
-                { error: 'Query timeout' },
-                sliceKey,
-              ),
-            );
-          } else if ((err.error || '').toLowerCase().includes('no data')) {
-            dispatch(annotationQuerySuccess(annotation, err, sliceKey));
-          } else if (err.statusText !== 'abort') {
-            dispatch(annotationQueryFailed(annotation, err, sliceKey));
-          }
-        }),
-      );
+  const sliceKey = key || Object.keys(getState().charts)[0];
+  // make a copy of formData, not modifying original formData
+  const fd = {
+    ...(formData || getState().charts[sliceKey].latestQueryFormData),
   };
+
+  if (!requiresQuery(annotation.sourceType)) {
+    return Promise.resolve();
+  }
+
+  const granularity = fd.time_grain_sqla || fd.granularity;
+  fd.time_grain_sqla = granularity;
+  fd.granularity = granularity;
+  const overridesKeys = Object.keys(annotation.overrides);
+  if (overridesKeys.includes('since') || overridesKeys.includes('until')) {
+    annotation.overrides = {
+      ...annotation.overrides,
+      time_range: null,
+    };
+  }
+  const sliceFormData = Object.keys(annotation.overrides).reduce(
+    (d, k) => ({
+      ...d,
+      [k]: annotation.overrides[k] || fd[k],
+    }),
+    {},
+  );
+
+  if (!isDashboardRequest && fd) {
+    const hasExtraFilters = fd.extra_filters && fd.extra_filters.length > 0;
+    sliceFormData.extra_filters = hasExtraFilters
+      ? fd.extra_filters
+      : undefined;
+  }
+
+  const isNative = annotation.sourceType === ANNOTATION_SOURCE_TYPES.NATIVE;
+  const url = getAnnotationJsonUrl(
+    annotation.value,
+    sliceFormData,
+    isNative,
+    force,
+  );
+  const controller = new AbortController();
+  const { signal } = controller;
+
+  dispatch(annotationQueryStarted(annotation, controller, sliceKey));
+
+  return SupersetClient.get({
+    url,
+    signal,
+    timeout: timeout * 1000,
+  })
+    .then(({ json }) =>
+      dispatch(annotationQuerySuccess(annotation, json, sliceKey)),
+    )
+    .catch(response =>
+      getClientErrorObject(response).then(err => {
+        if (err.statusText === 'timeout') {
+          dispatch(
+            annotationQueryFailed(
+              annotation,
+              { error: 'Query timeout' },
+              sliceKey,
+            ),
+          );
+        } else if ((err.error || '').toLowerCase().includes('no data')) {
+          dispatch(annotationQuerySuccess(annotation, err, sliceKey));
+        } else if (err.statusText !== 'abort') {
+          dispatch(annotationQueryFailed(annotation, err, sliceKey));
+        }
+      }),
+    );
 }
 
 export const TRIGGER_QUERY = 'TRIGGER_QUERY';
@@ -364,138 +364,138 @@ export function exploreJSON(
   method,
   dashboardId,
   ownState,
+  dispatch,
+  getState,
 ) {
-  return async dispatch => {
-    const logStart = Logger.getTimestamp();
-    const controller = new AbortController();
+  const logStart = Logger.getTimestamp();
+  const controller = new AbortController();
 
-    const requestParams = {
-      signal: controller.signal,
-      timeout: timeout * 1000,
-    };
-    if (dashboardId) requestParams.dashboard_id = dashboardId;
+  const requestParams = {
+    signal: controller.signal,
+    timeout: timeout * 1000,
+  };
+  if (dashboardId) requestParams.dashboard_id = dashboardId;
 
-    const setDataMask = dataMask => {
-      dispatch(updateDataMask(formData.slice_id, dataMask));
-    };
-    const chartDataRequest = getChartDataRequest({
-      setDataMask,
-      formData,
-      resultFormat: 'json',
-      resultType: 'full',
-      force,
-      method,
-      requestParams,
-      ownState,
-    });
+  const setDataMask = dataMask => {
+    dispatch(updateDataMask(formData.slice_id, dataMask));
+  };
+  const chartDataRequest = getChartDataRequest({
+    setDataMask,
+    formData,
+    resultFormat: 'json',
+    resultType: 'full',
+    force,
+    method,
+    requestParams,
+    ownState,
+  });
 
-    dispatch(chartUpdateStarted(controller, formData, key));
+  dispatch(chartUpdateStarted(controller, formData, key));
 
-    const chartDataRequestCaught = chartDataRequest
-      .then(({ response, json }) => {
-        if (isFeatureEnabled(FeatureFlag.GLOBAL_ASYNC_QUERIES)) {
-          // deal with getChartDataRequest transforming the response data
-          const result = 'result' in json ? json.result : json;
-          switch (response.status) {
-            case 200:
-              // Query results returned synchronously, meaning query was already cached.
-              return Promise.resolve(result);
-            case 202:
-              // Query is running asynchronously and we must await the results
-              if (shouldUseLegacyApi(formData)) {
-                return waitForAsyncData(result[0]);
-              }
-              return waitForAsyncData(result);
-            default:
-              throw new Error(
-                `Received unexpected response status (${response.status}) while fetching chart data`,
-              );
-          }
+  const chartDataRequestCaught = chartDataRequest
+    .then(({ response, json }) => {
+      if (isFeatureEnabled(FeatureFlag.GLOBAL_ASYNC_QUERIES)) {
+        // deal with getChartDataRequest transforming the response data
+        const result = 'result' in json ? json.result : json;
+        switch (response.status) {
+          case 200:
+            // Query results returned synchronously, meaning query was already cached.
+            return Promise.resolve(result);
+          case 202:
+            // Query is running asynchronously and we must await the results
+            if (shouldUseLegacyApi(formData)) {
+              return waitForAsyncData(result[0]);
+            }
+            return waitForAsyncData(result);
+          default:
+            throw new Error(
+              `Received unexpected response status (${response.status}) while fetching chart data`,
+            );
         }
+      }
 
-        return json.result;
-      })
-      .then(queriesResponse => {
-        queriesResponse.forEach(resultItem =>
-          dispatch(
-            logEvent(LOG_ACTIONS_LOAD_CHART, {
-              slice_id: key,
-              applied_filters: resultItem.applied_filters,
-              is_cached: resultItem.is_cached,
-              force_refresh: force,
-              row_count: resultItem.rowcount,
-              datasource: formData.datasource,
-              start_offset: logStart,
-              ts: new Date().getTime(),
-              duration: Logger.getTimestamp() - logStart,
-              has_extra_filters:
-                formData.extra_filters && formData.extra_filters.length > 0,
-              viz_type: formData.viz_type,
-              data_age: resultItem.is_cached
-                ? moment(new Date()).diff(moment.utc(resultItem.cached_dttm))
-                : null,
-            }),
-          ),
-        );
-        return dispatch(chartUpdateSucceeded(queriesResponse, key));
-      })
-      .catch(response => {
-        if (isFeatureEnabled(FeatureFlag.GLOBAL_ASYNC_QUERIES)) {
-          return dispatch(chartUpdateFailed([response], key));
-        }
-
-        const appendErrorLog = (errorDetails, isCached) => {
-          dispatch(
-            logEvent(LOG_ACTIONS_LOAD_CHART, {
-              slice_id: key,
-              has_err: true,
-              is_cached: isCached,
-              error_details: errorDetails,
-              datasource: formData.datasource,
-              start_offset: logStart,
-              ts: new Date().getTime(),
-              duration: Logger.getTimestamp() - logStart,
-            }),
-          );
-        };
-        if (response.name === 'AbortError') {
-          appendErrorLog('abort');
-          return dispatch(chartUpdateStopped(key));
-        }
-        return getClientErrorObject(response).then(parsedResponse => {
-          if (response.statusText === 'timeout') {
-            appendErrorLog('timeout');
-          } else {
-            appendErrorLog(parsedResponse.error, parsedResponse.is_cached);
-          }
-          return dispatch(chartUpdateFailed([parsedResponse], key));
-        });
-      });
-
-    // only retrieve annotations when calling the legacy API
-    const annotationLayers = shouldUseLegacyApi(formData)
-      ? formData.annotation_layers || []
-      : [];
-    const isDashboardRequest = dashboardId > 0;
-
-    return Promise.all([
-      chartDataRequestCaught,
-      dispatch(triggerQuery(false, key)),
-      dispatch(updateQueryFormData(formData, key)),
-      ...annotationLayers.map(annotation =>
+      return json.result;
+    })
+    .then(queriesResponse => {
+      queriesResponse.forEach(resultItem =>
         dispatch(
-          runAnnotationQuery({
-            annotation,
-            timeout,
-            formData,
-            key,
-            isDashboardRequest,
-            force,
+          logEvent(LOG_ACTIONS_LOAD_CHART, {
+            slice_id: key,
+            applied_filters: resultItem.applied_filters,
+            is_cached: resultItem.is_cached,
+            force_refresh: force,
+            row_count: resultItem.rowcount,
+            datasource: formData.datasource,
+            start_offset: logStart,
+            ts: new Date().getTime(),
+            duration: Logger.getTimestamp() - logStart,
+            has_extra_filters:
+              formData.extra_filters && formData.extra_filters.length > 0,
+            viz_type: formData.viz_type,
+            data_age: resultItem.is_cached
+              ? moment(new Date()).diff(moment.utc(resultItem.cached_dttm))
+              : null,
           }),
         ),
-      ),
-    ]);
-  };
+      );
+      return dispatch(chartUpdateSucceeded(queriesResponse, key));
+    })
+    .catch(response => {
+      if (isFeatureEnabled(FeatureFlag.GLOBAL_ASYNC_QUERIES)) {
+        return dispatch(chartUpdateFailed([response], key));
+      }
+
+      const appendErrorLog = (errorDetails, isCached) => {
+        dispatch(
+          logEvent(LOG_ACTIONS_LOAD_CHART, {
+            slice_id: key,
+            has_err: true,
+            is_cached: isCached,
+            error_details: errorDetails,
+            datasource: formData.datasource,
+            start_offset: logStart,
+            ts: new Date().getTime(),
+            duration: Logger.getTimestamp() - logStart,
+          }),
+        );
+      };
+      if (response.name === 'AbortError') {
+        appendErrorLog('abort');
+        return dispatch(chartUpdateStopped(key));
+      }
+      return getClientErrorObject(response).then(parsedResponse => {
+        if (response.statusText === 'timeout') {
+          appendErrorLog('timeout');
+        } else {
+          appendErrorLog(parsedResponse.error, parsedResponse.is_cached);
+        }
+        return dispatch(chartUpdateFailed([parsedResponse], key));
+      });
+    });
+
+  // only retrieve annotations when calling the legacy API
+  const annotationLayers = shouldUseLegacyApi(formData)
+    ? formData.annotation_layers || []
+    : [];
+  const isDashboardRequest = dashboardId > 0;
+
+  return Promise.all([
+    chartDataRequestCaught,
+    dispatch(triggerQuery(false, key)),
+    dispatch(updateQueryFormData(formData, key)),
+    ...annotationLayers.map(annotation =>
+      runAnnotationQuery({
+        annotation,
+        timeout,
+        formData,
+        key,
+        isDashboardRequest,
+        force,
+        dispatch,
+        getState,
+      }),
+    ),
+  ]);
 }
 
 export const GET_SAVED_CHART = 'GET_SAVED_CHART';
@@ -536,6 +536,8 @@ export function postChartFormData(
   key,
   dashboardId,
   ownState,
+  dispatch,
+  getState,
 ) {
   /*
    * Perform a POST request to `/explore_json`.
@@ -551,6 +553,8 @@ export function postChartFormData(
     'POST',
     dashboardId,
     ownState,
+    dispatch,
+    getState,
   );
 }
 
@@ -571,27 +575,25 @@ export function redirectSQLLab(formData) {
   };
 }
 
-export function refreshChart(chartKey, force, dashboardId) {
-  return (dispatch, getState) => {
-    const chart = (getState().charts || {})[chartKey];
-    const timeout =
-      getState().dashboardInfo.common.conf.SUPERSET_WEBSERVER_TIMEOUT;
+export function refreshChart(chartKey, force, dashboardId, dispatch, getState) {
+  const chart = (getState().charts || {})[chartKey];
+  const timeout =
+    getState().dashboardInfo.common.conf.SUPERSET_WEBSERVER_TIMEOUT;
 
-    if (
-      !chart.latestQueryFormData ||
-      Object.keys(chart.latestQueryFormData).length === 0
-    ) {
-      return;
-    }
-    dispatch(
-      postChartFormData(
-        chart.latestQueryFormData,
-        force,
-        timeout,
-        chart.id,
-        dashboardId,
-        getState().dataMask[chart.id]?.ownState,
-      ),
-    );
-  };
+  if (
+    !chart.latestQueryFormData ||
+    Object.keys(chart.latestQueryFormData).length === 0
+  ) {
+    return;
+  }
+  postChartFormData(
+    chart.latestQueryFormData,
+    force,
+    timeout,
+    chart.id,
+    dashboardId,
+    getState().dataMask[chart.id]?.ownState,
+    dispatch,
+    getState,
+  );
 }

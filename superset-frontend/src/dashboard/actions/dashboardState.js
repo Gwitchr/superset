@@ -398,38 +398,43 @@ export function fetchCharts(
   force = false,
   interval = 0,
   dashboardId,
+  dispatch,
+  getState,
 ) {
-  return (dispatch, getState) => {
-    if (!interval) {
-      chartList.forEach(chartKey =>
-        dispatch(refreshChart(chartKey, force, dashboardId)),
-      );
-      return;
-    }
+  if (!interval) {
+    chartList.forEach(chartKey =>
+      refreshChart(chartKey, force, dashboardId, dispatch, getState),
+    );
+    return;
+  }
 
-    const { metadata: meta } = getState().dashboardInfo;
-    const refreshTime = Math.max(interval, meta.stagger_time || 5000); // default 5 seconds
-    if (typeof meta.stagger_refresh !== 'boolean') {
-      meta.stagger_refresh =
-        meta.stagger_refresh === undefined
-          ? true
-          : meta.stagger_refresh === 'true';
-    }
-    const delay = meta.stagger_refresh
-      ? refreshTime / (chartList.length - 1)
-      : 0;
-    chartList.forEach((chartKey, i) => {
-      setTimeout(
-        () => dispatch(refreshChart(chartKey, force, dashboardId)),
-        delay * i,
-      );
-    });
-  };
+  const { metadata: meta } = getState().dashboardInfo;
+  const refreshTime = Math.max(interval, meta.stagger_time || 5000); // default 5 seconds
+  if (typeof meta.stagger_refresh !== 'boolean') {
+    meta.stagger_refresh =
+      meta.stagger_refresh === undefined
+        ? true
+        : meta.stagger_refresh === 'true';
+  }
+  const delay = meta.stagger_refresh ? refreshTime / (chartList.length - 1) : 0;
+  chartList.forEach((chartKey, i) => {
+    setTimeout(
+      () => refreshChart(chartKey, force, dashboardId, dispatch, getState),
+      delay * i,
+    );
+  });
 }
 
-const refreshCharts = (chartList, force, interval, dashboardId, dispatch) =>
+const refreshCharts = (
+  chartList,
+  force,
+  interval,
+  dashboardId,
+  dispatch,
+  getState,
+) =>
   new Promise(resolve => {
-    dispatch(fetchCharts(chartList, force, interval, dashboardId));
+    fetchCharts(chartList, force, interval, dashboardId, dispatch, getState);
     resolve();
   });
 
@@ -455,14 +460,19 @@ export function onRefresh(
   interval = 0,
   dashboardId,
 ) {
-  return dispatch => {
+  return async (dispatch, getState) => {
     dispatch({ type: ON_REFRESH });
-    refreshCharts(chartList, force, interval, dashboardId, dispatch).then(
-      () => {
-        dispatch(onRefreshSuccess());
-        dispatch(onFiltersRefresh());
-      },
+    await refreshCharts(
+      chartList,
+      force,
+      interval,
+      dashboardId,
+      dispatch,
+      getState,
     );
+    dispatch(onRefreshSuccess());
+    dispatch(onFiltersRefresh());
+    dispatch(addSuccessToast(t('All Charts got refreshed')));
   };
 }
 
